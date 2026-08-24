@@ -1,820 +1,466 @@
 <?php
-/*
-============================================================
-CRUD-EMPLOYEE2
-CREATE USER
-============================================================
 
-Database table:
-    app_users
+/*
+===========================================================
+        CURD_EMPLOYEE2
+        COMMERCIAL LICENSE GUARD
+===========================================================
 
 Purpose:
-    Create application users securely.
+    Protect the application using the remote
+    commercial license server.
 
-Password:
-    Stored using PHP password_hash()
+Remote license server:
+    license-commercial2-remote
 
-Timezone:
-    Asia/Kolkata
-============================================================
+Customer USER_ID:
+    Loaded from config.php
+
+IMPORTANT:
+    This file does NOT connect to the license database.
+===========================================================
 */
-
-date_default_timezone_set("Asia/Kolkata");
-
-session_start();
-
-require_once __DIR__ . "/db.php";
-
-$message = "";
-$message_type = "";
 
 
 /* =========================================================
-   CREATE USER
+   LOAD CONFIGURATION
 ========================================================= */
 
-if ($_SERVER["REQUEST_METHOD"] === "POST") {
+require_once __DIR__ . "/config.php";
 
-    $user_id =
-        trim($_POST["user_id"] ?? "");
 
-    $user_name =
-        trim($_POST["user_name"] ?? "");
+/* =========================================================
+   CUSTOMER LICENSE USER ID
+========================================================= */
 
-    $password =
-        $_POST["password"] ?? "";
+if (
+    !isset($LICENSE_USER_ID) ||
+    trim($LICENSE_USER_ID) === ""
+) {
 
-    $confirm_password =
-        $_POST["confirm_password"] ?? "";
+    http_response_code(500);
 
-    $active =
-        isset($_POST["active"])
-            ? 1
-            : 0;
+    die("License USER_ID is not configured.");
+}
 
-    $start_time =
-        trim($_POST["start_time"] ?? "");
 
-    $stop_time =
-        trim($_POST["stop_time"] ?? "");
+$user_id =
+    trim($LICENSE_USER_ID);
 
+
+/* =========================================================
+   LICENSE SERVER URL
+========================================================= */
+
+if (
+    !isset($LICENSE_SERVER_URL) ||
+    trim($LICENSE_SERVER_URL) === ""
+) {
+
+    http_response_code(500);
+
+    die("License server URL is not configured.");
+}
+
+
+$license_url =
+    trim($LICENSE_SERVER_URL);
+
+
+/* =========================================================
+   LICENSE CHECK FUNCTION
+========================================================= */
+
+function guard_check_license(
+    $user_id,
+    $license_url,
+    $license_timeout = 20
+) {
 
     /* -----------------------------------------------------
-       VALIDATION
+       POST DATA
     ----------------------------------------------------- */
 
-    if ($user_id === "") {
-
-        $message =
-            "User ID is required.";
-
-        $message_type =
-            "error";
-
-    }
-    elseif (!preg_match(
-        '/^[A-Za-z0-9_-]+$/',
-        $user_id
-    )) {
-
-        $message =
-            "User ID may contain only letters, numbers, underscore and hyphen.";
-
-        $message_type =
-            "error";
-
-    }
-    elseif ($user_name === "") {
-
-        $message =
-            "User Name is required.";
-
-        $message_type =
-            "error";
-
-    }
-    elseif ($password === "") {
-
-        $message =
-            "Password is required.";
-
-        $message_type =
-            "error";
-
-    }
-    elseif (strlen($password) < 6) {
-
-        $message =
-            "Password must contain at least 6 characters.";
-
-        $message_type =
-            "error";
-
-    }
-    elseif ($password !== $confirm_password) {
-
-        $message =
-            "Passwords do not match.";
-
-        $message_type =
-            "error";
-
-    }
-
-
-    /* -----------------------------------------------------
-       CHECK USER ID
-    ----------------------------------------------------- */
-
-    if ($message === "") {
-
-        $stmt = $conn->prepare("
-            SELECT id
-            FROM app_users
-            WHERE user_id = ?
-            LIMIT 1
-        ");
-
-        if (!$stmt) {
-
-            $message =
-                "Could not prepare user check.";
-
-            $message_type =
-                "error";
-
-        }
-        else {
-
-            $stmt->bind_param(
-                "s",
-                $user_id
-            );
-
-            $stmt->execute();
-
-            $result =
-                $stmt->get_result();
-
-            if ($result->num_rows > 0) {
-
-                $message =
-                    "This User ID already exists.";
-
-                $message_type =
-                    "error";
-            }
-
-            $stmt->close();
-        }
-    }
-
-
-    /* -----------------------------------------------------
-       CHECK START / STOP TIME
-    ----------------------------------------------------- */
-
-    if ($message === "") {
-
-        $start_datetime = null;
-        $stop_datetime = null;
-
-
-        if ($start_time !== "") {
-
-            $start_datetime =
-                str_replace(
-                    "T",
-                    " ",
-                    $start_time
-                );
-
-            if (strlen($start_datetime) === 16) {
-                $start_datetime .= ":00";
-            }
-        }
-
-
-        if ($stop_time !== "") {
-
-            $stop_datetime =
-                str_replace(
-                    "T",
-                    " ",
-                    $stop_time
-                );
-
-            if (strlen($stop_datetime) === 16) {
-                $stop_datetime .= ":00";
-            }
-        }
-
-
-        /* Start must be before Stop */
-
-        if (
-            $start_datetime !== null &&
-            $stop_datetime !== null
-        ) {
-
-            $start_timestamp =
-                strtotime($start_datetime);
-
-            $stop_timestamp =
-                strtotime($stop_datetime);
-
-            if (
-                $start_timestamp !== false &&
-                $stop_timestamp !== false &&
-                $start_timestamp >= $stop_timestamp
-            ) {
-
-                $message =
-                    "Stop Time must be later than Start Time.";
-
-                $message_type =
-                    "error";
-            }
-        }
-    }
-
-
-    /* -----------------------------------------------------
-       INSERT USER
-    ----------------------------------------------------- */
-
-    if ($message === "") {
-
-        /*
-         * Generate secure password hash.
-         */
-
-        $password_hash =
-            password_hash(
-                $password,
-                PASSWORD_DEFAULT
-            );
-
-
-        $stmt = $conn->prepare("
-            INSERT INTO app_users
-            (
-                user_id,
-                user_name,
-                password_hash,
-                active,
-                start_time,
-                stop_time
-            )
-            VALUES
-            (?, ?, ?, ?, ?, ?)
-        ");
-
-
-        if (!$stmt) {
-
-            $message =
-                "Could not prepare user creation.";
-
-            $message_type =
-                "error";
-
-        }
-        else {
-
-            $stmt->bind_param(
-                "sssiss",
-                $user_id,
-                $user_name,
-                $password_hash,
-                $active,
-                $start_datetime,
-                $stop_datetime
-            );
-
-
-            if ($stmt->execute()) {
-
-                $message =
-                    "User created successfully.";
-
-                $message_type =
-                    "success";
-
-
-                /*
-                 * Clear form fields after successful creation.
-                 */
-
-                $user_id = "";
-                $user_name = "";
-                $password = "";
-                $confirm_password = "";
-                $start_time = "";
-                $stop_time = "";
-                $active = 1;
-
-            }
-            else {
-
-                $message =
-                    "User creation failed: " .
-                    $stmt->error;
-
-                $message_type =
-                    "error";
-            }
-
-
-            $stmt->close();
-        }
-    }
-}
-
-?>
-<!DOCTYPE html>
-
-<html lang="en">
-
-<head>
-
-<meta charset="UTF-8">
-
-<meta name="viewport"
-      content="width=device-width, initial-scale=1.0">
-
-<title>Create User - CRUD Employee 2</title>
-
-
-<style>
-
-* {
-    box-sizing: border-box;
-}
-
-
-body {
-
-    margin: 0;
-
-    padding: 20px;
-
-    font-family:
-        Arial,
-        Helvetica,
-        sans-serif;
-
-    background: #f2f2f2;
-}
-
-
-.container {
-
-    max-width: 500px;
-
-    margin: 50px auto;
-
-    background: white;
-
-    padding: 30px;
-
-    border-radius: 12px;
-
-    box-shadow:
-        0 3px 15px
-        rgba(0,0,0,0.15);
-}
-
-
-h1 {
-
-    text-align: center;
-
-    margin-top: 0;
-
-    color: #1d3557;
-}
-
-
-.subtitle {
-
-    text-align: center;
-
-    color: #666;
-
-    margin-bottom: 25px;
-}
-
-
-.form-group {
-
-    margin-bottom: 18px;
-}
-
-
-label {
-
-    display: block;
-
-    font-weight: bold;
-
-    margin-bottom: 7px;
-}
-
-
-input {
-
-    width: 100%;
-
-    padding: 11px;
-
-    border: 1px solid #aaa;
-
-    border-radius: 6px;
-
-    font-size: 15px;
-}
-
-
-input:focus {
-
-    outline: none;
-
-    border-color: #007bff;
-
-    box-shadow:
-        0 0 4px
-        rgba(0,123,255,0.25);
-}
-
-
-.checkbox-group {
-
-    display: flex;
-
-    align-items: center;
-
-    gap: 8px;
-
-    margin-bottom: 20px;
-}
-
-
-.checkbox-group input {
-
-    width: auto;
-}
-
-
-.create-button {
-
-    width: 100%;
-
-    padding: 12px;
-
-    border: none;
-
-    border-radius: 6px;
-
-    background: #198754;
-
-    color: white;
-
-    font-size: 16px;
-
-    cursor: pointer;
-}
-
-
-.create-button:hover {
-
-    opacity: 0.85;
-}
-
-
-.message {
-
-    padding: 12px;
-
-    border-radius: 6px;
-
-    margin-bottom: 20px;
-
-    text-align: center;
-
-    font-weight: bold;
-}
-
-
-.success {
-
-    background: #d1e7dd;
-
-    color: #0f5132;
-}
-
-
-.error {
-
-    background: #f8d7da;
-
-    color: #842029;
-}
-
-
-.note {
-
-    background: #fff3cd;
-
-    color: #664d03;
-
-    padding: 12px;
-
-    border-radius: 6px;
-
-    margin-bottom: 20px;
-
-    line-height: 1.6;
-
-    font-size: 14px;
-}
-
-
-.back {
-
-    display: block;
-
-    text-align: center;
-
-    margin-top: 20px;
-
-    color: #007bff;
-
-    text-decoration: none;
-}
-
-
-.back:hover {
-
-    text-decoration: underline;
-}
-
-</style>
-
-</head>
-
-
-<body>
-
-
-<div class="container">
-
-
-<h1>
-Create User
-</h1>
-
-
-<div class="subtitle">
-CRUD Employee 2
-</div>
-
-
-<div class="note">
-
-<strong>Important:</strong><br>
-
-The password will be automatically converted
-to a secure password hash before it is stored
-in the database.
-
-<br><br>
-
-You do not need to enter a password hash manually.
-
-</div>
-
-
-<?php
-
-if ($message !== "") {
-
-?>
-
-<div
-    class="message
-    <?php
-        echo $message_type === "success"
-            ? "success"
-            : "error";
-    ?>"
->
-
-<?php
-
-echo htmlspecialchars(
-    $message,
-    ENT_QUOTES,
-    "UTF-8"
-);
-
-?>
-
-</div>
-
-<?php
-
-}
-
-?>
-
-
-<form
-    method="POST"
-    action="create_user.php"
->
-
-
-<div class="form-group">
-
-<label for="user_id">
-User ID
-</label>
-
-<input
-    type="text"
-    id="user_id"
-    name="user_id"
-    maxlength="50"
-    required
-    placeholder="Example: ravi"
-    value="<?php
-        echo htmlspecialchars(
-            $user_id ?? "",
-            ENT_QUOTES,
-            "UTF-8"
+    $post_data =
+        http_build_query(
+            [
+                "user_id" => $user_id
+            ]
         );
-    ?>"
->
-
-</div>
 
 
-<div class="form-group">
+    /* -----------------------------------------------------
+       CURL INITIALIZATION
+    ----------------------------------------------------- */
 
-<label for="user_name">
-User Name
-</label>
+    $ch =
+        curl_init();
 
-<input
-    type="text"
-    id="user_name"
-    name="user_name"
-    maxlength="100"
-    required
-    placeholder="Example: Ravi"
-    value="<?php
-        echo htmlspecialchars(
-            $user_name ?? "",
-            ENT_QUOTES,
-            "UTF-8"
+
+    if ($ch === false) {
+
+        return [
+
+            "success" => false,
+
+            "status" => "OFF",
+
+            "message" =>
+                "Unable to initialize license connection."
+        ];
+    }
+
+
+    /* -----------------------------------------------------
+       CURL SETTINGS
+    ----------------------------------------------------- */
+
+    curl_setopt_array(
+        $ch,
+        [
+
+            CURLOPT_URL =>
+                $license_url,
+
+            CURLOPT_POST =>
+                true,
+
+            CURLOPT_POSTFIELDS =>
+                $post_data,
+
+            CURLOPT_RETURNTRANSFER =>
+                true,
+
+            CURLOPT_CONNECTTIMEOUT =>
+                10,
+
+            CURLOPT_TIMEOUT =>
+                (int)$license_timeout,
+
+            CURLOPT_FOLLOWLOCATION =>
+                true,
+
+            CURLOPT_MAXREDIRS =>
+                5,
+
+            CURLOPT_HTTPHEADER =>
+                [
+                    "Content-Type: application/x-www-form-urlencoded",
+                    "Accept: application/json",
+                    "User-Agent: CURD-EMPLOYEE2-License-Client/1.0"
+                ],
+
+            CURLOPT_SSL_VERIFYPEER =>
+                true,
+
+            CURLOPT_SSL_VERIFYHOST =>
+                2
+        ]
+    );
+
+
+    /* -----------------------------------------------------
+       EXECUTE REQUEST
+    ----------------------------------------------------- */
+
+    $response =
+        curl_exec($ch);
+
+
+    /* -----------------------------------------------------
+       CURL ERROR
+    ----------------------------------------------------- */
+
+    if ($response === false) {
+
+        $error =
+            curl_error($ch);
+
+        $errno =
+            curl_errno($ch);
+
+        curl_close($ch);
+
+
+        return [
+
+            "success" => false,
+
+            "status" => "OFF",
+
+            "message" =>
+                "License server connection failed. " .
+                "cURL error " .
+                $errno .
+                ": " .
+                $error
+        ];
+    }
+
+
+    /* -----------------------------------------------------
+       HTTP INFORMATION
+    ----------------------------------------------------- */
+
+    $http_code =
+        curl_getinfo(
+            $ch,
+            CURLINFO_HTTP_CODE
         );
-    ?>"
->
-
-</div>
 
 
-<div class="form-group">
-
-<label for="password">
-Password
-</label>
-
-<input
-    type="password"
-    id="password"
-    name="password"
-    required
-    autocomplete="new-password"
->
-
-</div>
+    $content_type =
+        curl_getinfo(
+            $ch,
+            CURLINFO_CONTENT_TYPE
+        );
 
 
-<div class="form-group">
-
-<label for="confirm_password">
-Confirm Password
-</label>
-
-<input
-    type="password"
-    id="confirm_password"
-    name="confirm_password"
-    required
-    autocomplete="new-password"
->
-
-</div>
+    $total_time =
+        curl_getinfo(
+            $ch,
+            CURLINFO_TOTAL_TIME
+        );
 
 
-<div class="checkbox-group">
+    curl_close($ch);
 
-<input
-    type="checkbox"
-    id="active"
-    name="active"
-    value="1"
-    <?php
-        echo (!isset($active) || $active == 1)
-            ? "checked"
-            : "";
+
+    /* -----------------------------------------------------
+       HTTP STATUS CHECK
+    ----------------------------------------------------- */
+
+    if (
+        $http_code < 200 ||
+        $http_code >= 300
+    ) {
+
+        return [
+
+            "success" => false,
+
+            "status" => "OFF",
+
+            "message" =>
+                "License checker returned HTTP " .
+                $http_code .
+                ". Content-Type: " .
+                ($content_type ?? "unknown") .
+                ". Request time: " .
+                round(
+                    (float)$total_time,
+                    3
+                ) .
+                " seconds."
+        ];
+    }
+
+
+    /* -----------------------------------------------------
+       CLEAN RESPONSE
+    ----------------------------------------------------- */
+
+    $response =
+        trim($response);
+
+
+    /* Remove UTF-8 BOM */
+
+    $response =
+        preg_replace(
+            '/^\xEF\xBB\xBF/',
+            '',
+            $response
+        );
+
+
+    /* Remove accidental Markdown fences */
+
+    $response =
+        preg_replace(
+            '/^```(?:json|php)?\s*/i',
+            '',
+            $response
+        );
+
+
+    $response =
+        preg_replace(
+            '/\s*```\s*$/',
+            '',
+            $response
+        );
+
+
+    $response =
+        trim($response);
+
+
+    /* -----------------------------------------------------
+       JSON DECODE
+    ----------------------------------------------------- */
+
+    $data =
+        json_decode(
+            $response,
+            true
+        );
+
+
+    if (!is_array($data)) {
+
+        return [
+
+            "success" => false,
+
+            "status" => "OFF",
+
+            "message" =>
+                "Invalid response from license server. " .
+                "JSON error: " .
+                json_last_error_msg()
+        ];
+    }
+
+
+    return $data;
+}
+
+
+/* =========================================================
+   PERFORM LICENSE CHECK
+========================================================= */
+
+$license =
+    guard_check_license(
+        $user_id,
+        $license_url,
+        $LICENSE_TIMEOUT ?? 20
+    );
+
+
+/* =========================================================
+   AUTHORIZATION
+========================================================= */
+
+$authorized =
+    isset($license["status"]) &&
+    strtoupper(
+        trim(
+            $license["status"]
+        )
+    ) === "ON";
+
+
+/* =========================================================
+   APPLICATION DISABLED
+========================================================= */
+
+if (!$authorized) {
+
+    http_response_code(403);
+
     ?>
->
 
-<label
-    for="active"
-    style="margin:0;"
->
-Active User
-</label>
+    <!DOCTYPE html>
 
-</div>
+    <html>
 
+    <head>
 
-<div class="form-group">
+        <meta charset="UTF-8">
 
-<label for="start_time">
-Start Time (Optional)
-</label>
+        <title>
+            Application Disabled
+        </title>
 
-<input
-    type="datetime-local"
-    id="start_time"
-    name="start_time"
-    value="<?php
-        echo htmlspecialchars(
-            $start_time ?? "",
-            ENT_QUOTES,
-            "UTF-8"
-        );
-    ?>"
->
+        <style>
 
-</div>
+        body {
+            font-family: Arial, sans-serif;
+            background: #f2f2f2;
+            text-align: center;
+            padding: 50px;
+        }
 
+        .box {
+            background: white;
+            max-width: 700px;
+            margin: auto;
+            padding: 35px;
+            border-radius: 12px;
+            box-shadow: 0 0 10px #aaa;
+            border: 2px solid red;
+        }
 
-<div class="form-group">
+        h1 {
+            color: red;
+        }
 
-<label for="stop_time">
-Stop Time (Optional)
-</label>
+        .message {
+            font-size: 18px;
+            margin: 20px;
+        }
 
-<input
-    type="datetime-local"
-    id="stop_time"
-    name="stop_time"
-    value="<?php
-        echo htmlspecialchars(
-            $stop_time ?? "",
-            ENT_QUOTES,
-            "UTF-8"
-        );
-    ?>"
->
+        a {
+            display: inline-block;
+            margin-top: 20px;
+            padding: 10px 20px;
+            background: #eee;
+            border: 1px solid #ccc;
+            border-radius: 6px;
+            text-decoration: none;
+            color: black;
+        }
 
-</div>
+        </style>
 
+    </head>
 
-<button
-    type="submit"
-    class="create-button"
->
-CREATE USER
-</button>
+    <body>
 
+        <div class="box">
 
-</form>
+            <h1>
+                APPLICATION DISABLED
+            </h1>
 
+            <p class="message">
 
-<a
-    href="login.php"
-    class="back"
->
-Go to Login
-</a>
+                <?= htmlspecialchars(
+                    $license["message"]
+                    ?? "Application is not authorized.",
+                    ENT_QUOTES,
+                    "UTF-8"
+                ) ?>
 
+            </p>
 
-</div>
+            <p>
 
+                User ID:
 
-</body>
+                <?= htmlspecialchars(
+                    $user_id,
+                    ENT_QUOTES,
+                    "UTF-8"
+                ) ?>
 
-</html>
+            </p>
 
-<?php
+            <a href="index.php">
+                Back to Main Application
+            </a>
 
-mysqli_close($conn);
+        </div>
+
+    </body>
+
+    </html>
+
+    <?php
+
+    exit;
+}
 
 ?>
