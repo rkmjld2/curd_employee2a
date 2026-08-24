@@ -62,8 +62,8 @@ uses a different user_id.
 
 ========================================================= */
 
-$LICENSE_USER_ID = "CURD_EMPLOYEE2";
 
+$LICENSE_USER_ID = "USER001";
 
 /* =========================================================
    REMOTE LICENSE SERVER
