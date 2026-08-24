@@ -10,14 +10,21 @@ Purpose:
     Protect the application using the remote
     commercial license server.
 
-Remote license server:
-    license-commercial2-remote
-
-Customer USER_ID:
-    Loaded from config.php
+Features:
+    - Remote license verification
+    - Automatic retry on temporary connection/HTTP errors
+    - Maximum 3 attempts
+    - Supports JSON response from license server
 
 IMPORTANT:
     This file does NOT connect to the license database.
+
+    Employee database:
+        db.php
+
+    License database:
+        Remote license server
+
 ===========================================================
 */
 
@@ -77,253 +84,338 @@ function guard_check_license(
     $license_timeout = 20
 ) {
 
-    /* -----------------------------------------------------
-       POST DATA
-    ----------------------------------------------------- */
+    /*
+     * Maximum number of attempts.
+     *
+     * 1 = first request
+     * 2 = first retry
+     * 3 = second retry
+     */
 
-    $post_data =
-        http_build_query(
-            [
-                "user_id" => $user_id
-            ]
-        );
-
-
-    /* -----------------------------------------------------
-       CURL INITIALIZATION
-    ----------------------------------------------------- */
-
-    $ch =
-        curl_init();
+    $max_attempts = 3;
 
 
-    if ($ch === false) {
+    /*
+     * Keep the last error so that if all
+     * attempts fail we can display useful
+     * diagnostic information.
+     */
 
-        return [
-
-            "success" => false,
-
-            "status" => "OFF",
-
-            "message" =>
-                "Unable to initialize license connection."
-        ];
-    }
+    $last_error =
+        "Unknown license server error.";
 
 
-    /* -----------------------------------------------------
-       CURL SETTINGS
-    ----------------------------------------------------- */
+    /*
+     * -----------------------------------------------------
+     * RETRY LOOP
+     * -----------------------------------------------------
+     */
 
-    curl_setopt_array(
-        $ch,
-        [
-
-            CURLOPT_URL =>
-                $license_url,
-
-            CURLOPT_POST =>
-                true,
-
-            CURLOPT_POSTFIELDS =>
-                $post_data,
-
-            CURLOPT_RETURNTRANSFER =>
-                true,
-
-            CURLOPT_CONNECTTIMEOUT =>
-                10,
-
-            CURLOPT_TIMEOUT =>
-                (int)$license_timeout,
-
-            CURLOPT_FOLLOWLOCATION =>
-                true,
-
-            CURLOPT_MAXREDIRS =>
-                5,
-
-            CURLOPT_HTTPHEADER =>
-                [
-                    "Content-Type: application/x-www-form-urlencoded",
-                    "Accept: application/json",
-                    "User-Agent: CURD-EMPLOYEE2-License-Client/1.0"
-                ],
-
-            CURLOPT_SSL_VERIFYPEER =>
-                true,
-
-            CURLOPT_SSL_VERIFYHOST =>
-                2
-        ]
-    );
-
-
-    /* -----------------------------------------------------
-       EXECUTE REQUEST
-    ----------------------------------------------------- */
-
-    $response =
-        curl_exec($ch);
-
-
-    /* -----------------------------------------------------
-       CURL ERROR
-    ----------------------------------------------------- */
-
-    if ($response === false) {
-
-        $error =
-            curl_error($ch);
-
-        $errno =
-            curl_errno($ch);
-
-        curl_close($ch);
-
-
-        return [
-
-            "success" => false,
-
-            "status" => "OFF",
-
-            "message" =>
-                "License server connection failed. " .
-                "cURL error " .
-                $errno .
-                ": " .
-                $error
-        ];
-    }
-
-
-    /* -----------------------------------------------------
-       HTTP INFORMATION
-    ----------------------------------------------------- */
-
-    $http_code =
-        curl_getinfo(
-            $ch,
-            CURLINFO_HTTP_CODE
-        );
-
-
-    $content_type =
-        curl_getinfo(
-            $ch,
-            CURLINFO_CONTENT_TYPE
-        );
-
-
-    $total_time =
-        curl_getinfo(
-            $ch,
-            CURLINFO_TOTAL_TIME
-        );
-
-
-    curl_close($ch);
-
-
-    /* -----------------------------------------------------
-       HTTP STATUS CHECK
-    ----------------------------------------------------- */
-
-    if (
-        $http_code < 200 ||
-        $http_code >= 300
+    for (
+        $attempt = 1;
+        $attempt <= $max_attempts;
+        $attempt++
     ) {
 
-        return [
 
-            "success" => false,
+        /* =================================================
+           POST DATA
+        ================================================= */
 
-            "status" => "OFF",
+        $post_data =
+            http_build_query(
+                [
+                    "user_id" => $user_id
+                ]
+            );
 
-            "message" =>
-                "License checker returned HTTP " .
-                $http_code .
-                ". Content-Type: " .
-                ($content_type ?? "unknown") .
-                ". Request time: " .
-                round(
-                    (float)$total_time,
-                    3
-                ) .
-                " seconds."
-        ];
+
+        /* =================================================
+           CURL INITIALIZATION
+        ================================================= */
+
+        $ch =
+            curl_init();
+
+
+        if ($ch === false) {
+
+            $last_error =
+                "Unable to initialize license connection.";
+
+        } else {
+
+
+            /* =================================================
+               CURL SETTINGS
+            ================================================= */
+
+            curl_setopt_array(
+                $ch,
+                [
+
+                    CURLOPT_URL =>
+                        $license_url,
+
+                    CURLOPT_POST =>
+                        true,
+
+                    CURLOPT_POSTFIELDS =>
+                        $post_data,
+
+                    CURLOPT_RETURNTRANSFER =>
+                        true,
+
+                    /*
+                     * Connection timeout.
+                     */
+
+                    CURLOPT_CONNECTTIMEOUT =>
+                        10,
+
+                    /*
+                     * Maximum request time.
+                     */
+
+                    CURLOPT_TIMEOUT =>
+                        (int)$license_timeout,
+
+                    CURLOPT_FOLLOWLOCATION =>
+                        true,
+
+                    CURLOPT_MAXREDIRS =>
+                        5,
+
+                    /*
+                     * Request headers.
+                     */
+
+                    CURLOPT_HTTPHEADER =>
+                        [
+                            "Content-Type: application/x-www-form-urlencoded",
+                            "Accept: application/json",
+                            "User-Agent: CURD-EMPLOYEE2-License-Client/1.0"
+                        ],
+
+                    /*
+                     * HTTPS certificate verification.
+                     */
+
+                    CURLOPT_SSL_VERIFYPEER =>
+                        true,
+
+                    CURLOPT_SSL_VERIFYHOST =>
+                        2
+                ]
+            );
+
+
+            /* =================================================
+               EXECUTE REQUEST
+            ================================================= */
+
+            $response =
+                curl_exec($ch);
+
+
+            /* =================================================
+               CURL ERROR
+            ================================================= */
+
+            if ($response === false) {
+
+                $error =
+                    curl_error($ch);
+
+                $errno =
+                    curl_errno($ch);
+
+
+                $last_error =
+                    "cURL error " .
+                    $errno .
+                    ": " .
+                    $error;
+
+
+                curl_close($ch);
+
+            } else {
+
+
+                /* =================================================
+                   HTTP INFORMATION
+                ================================================= */
+
+                $http_code =
+                    curl_getinfo(
+                        $ch,
+                        CURLINFO_HTTP_CODE
+                    );
+
+
+                $content_type =
+                    curl_getinfo(
+                        $ch,
+                        CURLINFO_CONTENT_TYPE
+                    );
+
+
+                curl_close($ch);
+
+
+                /* =================================================
+                   SUCCESSFUL HTTP RESPONSE
+                ================================================= */
+
+                if (
+                    $http_code >= 200 &&
+                    $http_code < 300
+                ) {
+
+
+                    /* =============================================
+                       CLEAN RESPONSE
+                    ============================================= */
+
+                    $response =
+                        trim($response);
+
+
+                    /*
+                     * Remove UTF-8 BOM.
+                     */
+
+                    $response =
+                        preg_replace(
+                            '/^\xEF\xBB\xBF/',
+                            '',
+                            $response
+                        );
+
+
+                    /*
+                     * Remove accidental Markdown fences.
+                     */
+
+                    $response =
+                        preg_replace(
+                            '/^```(?:json|php)?\s*/i',
+                            '',
+                            $response
+                        );
+
+
+                    $response =
+                        preg_replace(
+                            '/\s*```\s*$/',
+                            '',
+                            $response
+                        );
+
+
+                    $response =
+                        trim($response);
+
+
+                    /* =============================================
+                       JSON DECODE
+                    ============================================= */
+
+                    $data =
+                        json_decode(
+                            $response,
+                            true
+                        );
+
+
+                    if (
+                        !is_array($data)
+                    ) {
+
+                        return [
+
+                            "success" => false,
+
+                            "status" => "OFF",
+
+                            "message" =>
+                                "Invalid response from license server. " .
+                                "JSON error: " .
+                                json_last_error_msg()
+                        ];
+                    }
+
+
+                    /*
+                     * License server responded correctly.
+                     *
+                     * IMPORTANT:
+                     *
+                     * If the license server says OFF,
+                     * we return OFF immediately.
+                     *
+                     * We retry only temporary communication
+                     * failures, not a genuine license denial.
+                     */
+
+                    return $data;
+                }
+
+
+                /* =================================================
+                   HTTP ERROR
+                ================================================= */
+
+                $last_error =
+                    "License checker returned HTTP " .
+                    $http_code .
+                    ". Content-Type: " .
+                    (
+                        $content_type ??
+                        "unknown"
+                    );
+            }
+        }
+
+
+        /* =================================================
+           RETRY DELAY
+        =================================================
+
+        Do not wait after the final attempt.
+
+        Attempt 1 → wait 1 second
+        Attempt 2 → wait 2 seconds
+        Attempt 3 → stop
+
+        ================================================= */
+
+        if (
+            $attempt < $max_attempts
+        ) {
+
+            sleep($attempt);
+        }
     }
 
 
-    /* -----------------------------------------------------
-       CLEAN RESPONSE
-    ----------------------------------------------------- */
+    /* =========================================================
+       ALL ATTEMPTS FAILED
+    ========================================================= */
 
-    $response =
-        trim($response);
+    return [
 
+        "success" => false,
 
-    /* Remove UTF-8 BOM */
+        "status" => "OFF",
 
-    $response =
-        preg_replace(
-            '/^\xEF\xBB\xBF/',
-            '',
-            $response
-        );
-
-
-    /* Remove accidental Markdown fences */
-
-    $response =
-        preg_replace(
-            '/^```(?:json|php)?\s*/i',
-            '',
-            $response
-        );
-
-
-    $response =
-        preg_replace(
-            '/\s*```\s*$/',
-            '',
-            $response
-        );
-
-
-    $response =
-        trim($response);
-
-
-    /* -----------------------------------------------------
-       JSON DECODE
-    ----------------------------------------------------- */
-
-    $data =
-        json_decode(
-            $response,
-            true
-        );
-
-
-    if (!is_array($data)) {
-
-        return [
-
-            "success" => false,
-
-            "status" => "OFF",
-
-            "message" =>
-                "Invalid response from license server. " .
-                "JSON error: " .
-                json_last_error_msg()
-        ];
-    }
-
-
-    return $data;
+        "message" =>
+            $last_error .
+            " License server was contacted " .
+            $max_attempts .
+            " times."
+    ];
 }
 
 
@@ -377,45 +469,98 @@ if (!$authorized) {
         <style>
 
         body {
-            font-family: Arial, sans-serif;
-            background: #f2f2f2;
-            text-align: center;
-            padding: 50px;
+
+            font-family:
+                Arial,
+                sans-serif;
+
+            background:
+                #f2f2f2;
+
+            text-align:
+                center;
+
+            padding:
+                50px;
         }
+
 
         .box {
-            background: white;
-            max-width: 700px;
-            margin: auto;
-            padding: 35px;
-            border-radius: 12px;
-            box-shadow: 0 0 10px #aaa;
-            border: 2px solid red;
+
+            background:
+                white;
+
+            max-width:
+                700px;
+
+            margin:
+                auto;
+
+            padding:
+                35px;
+
+            border-radius:
+                12px;
+
+            box-shadow:
+                0 0 10px #aaa;
+
+            border:
+                2px solid red;
         }
+
 
         h1 {
-            color: red;
+
+            color:
+                red;
         }
+
 
         .message {
-            font-size: 18px;
-            margin: 20px;
+
+            font-size:
+                18px;
+
+            margin:
+                20px;
+
+            line-height:
+                1.5;
         }
 
+
         a {
-            display: inline-block;
-            margin-top: 20px;
-            padding: 10px 20px;
-            background: #eee;
-            border: 1px solid #ccc;
-            border-radius: 6px;
-            text-decoration: none;
-            color: black;
+
+            display:
+                inline-block;
+
+            margin-top:
+                20px;
+
+            padding:
+                10px 20px;
+
+            background:
+                #eee;
+
+            border:
+                1px solid #ccc;
+
+            border-radius:
+                6px;
+
+            text-decoration:
+                none;
+
+            color:
+                black;
         }
 
         </style>
 
     </head>
+
 
     <body>
 
@@ -425,16 +570,19 @@ if (!$authorized) {
                 APPLICATION DISABLED
             </h1>
 
+
             <p class="message">
 
                 <?= htmlspecialchars(
                     $license["message"]
-                    ?? "Application is not authorized.",
+                    ??
+                    "Application is not authorized.",
                     ENT_QUOTES,
                     "UTF-8"
                 ) ?>
 
             </p>
+
 
             <p>
 
@@ -447,6 +595,7 @@ if (!$authorized) {
                 ) ?>
 
             </p>
+
 
             <a href="index.php">
                 Back to Main Application
