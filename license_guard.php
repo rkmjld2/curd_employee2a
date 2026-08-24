@@ -10,26 +10,14 @@ Purpose:
     Protect the application using the remote
     commercial license server.
 
+Remote license server:
+    license-commercial2-remote
+
+Customer USER_ID:
+    Loaded from config.php
+
 IMPORTANT:
-
-    This file does NOT connect to MySQL.
-
-    Employee database:
-        db.php
-        ↓
-        local XAMPP MySQL
-        ↓
-        employeer
-
-    License database:
-        NOT accessed directly.
-
-    License checking:
-        ↓
-        remote license_check.php
-        ↓
-        license_demo_v2
-
+    This file does NOT connect to the license database.
 ===========================================================
 */
 
@@ -43,13 +31,6 @@ require_once __DIR__ . "/config.php";
 
 /* =========================================================
    CUSTOMER LICENSE USER ID
-=========================================================
-
-This value identifies this customer/application
-on the remote license server.
-
-For testing we will configure it in config.php.
-
 ========================================================= */
 
 if (
@@ -63,7 +44,8 @@ if (
 }
 
 
-$user_id = trim($LICENSE_USER_ID);
+$user_id =
+    trim($LICENSE_USER_ID);
 
 
 /* =========================================================
@@ -81,7 +63,8 @@ if (
 }
 
 
-$license_url = trim($LICENSE_SERVER_URL);
+$license_url =
+    trim($LICENSE_SERVER_URL);
 
 
 /* =========================================================
@@ -98,18 +81,20 @@ function guard_check_license(
        POST DATA
     ----------------------------------------------------- */
 
-    $post_data = http_build_query(
-        [
-            "user_id" => $user_id
-        ]
-    );
+    $post_data =
+        http_build_query(
+            [
+                "user_id" => $user_id
+            ]
+        );
 
 
     /* -----------------------------------------------------
        CURL INITIALIZATION
     ----------------------------------------------------- */
 
-    $ch = curl_init($license_url);
+    $ch =
+        curl_init();
 
 
     if ($ch === false) {
@@ -130,54 +115,46 @@ function guard_check_license(
        CURL SETTINGS
     ----------------------------------------------------- */
 
-    curl_setopt(
+    curl_setopt_array(
         $ch,
-        CURLOPT_POST,
-        true
-    );
-
-
-    curl_setopt(
-        $ch,
-        CURLOPT_POSTFIELDS,
-        $post_data
-    );
-
-
-    curl_setopt(
-        $ch,
-        CURLOPT_RETURNTRANSFER,
-        true
-    );
-
-
-    curl_setopt(
-        $ch,
-        CURLOPT_CONNECTTIMEOUT,
-        10
-    );
-
-
-    curl_setopt(
-        $ch,
-        CURLOPT_TIMEOUT,
-        (int)$license_timeout
-    );
-
-
-    curl_setopt(
-        $ch,
-        CURLOPT_FOLLOWLOCATION,
-        true
-    );
-
-
-    curl_setopt(
-        $ch,
-        CURLOPT_HTTPHEADER,
         [
-            "Content-Type: application/x-www-form-urlencoded",
-            "Accept: application/json"
+
+            CURLOPT_URL =>
+                $license_url,
+
+            CURLOPT_POST =>
+                true,
+
+            CURLOPT_POSTFIELDS =>
+                $post_data,
+
+            CURLOPT_RETURNTRANSFER =>
+                true,
+
+            CURLOPT_CONNECTTIMEOUT =>
+                10,
+
+            CURLOPT_TIMEOUT =>
+                (int)$license_timeout,
+
+            CURLOPT_FOLLOWLOCATION =>
+                true,
+
+            CURLOPT_MAXREDIRS =>
+                5,
+
+            CURLOPT_HTTPHEADER =>
+                [
+                    "Content-Type: application/x-www-form-urlencoded",
+                    "Accept: application/json",
+                    "User-Agent: CURD-EMPLOYEE2-License-Client/1.0"
+                ],
+
+            CURLOPT_SSL_VERIFYPEER =>
+                true,
+
+            CURLOPT_SSL_VERIFYHOST =>
+                2
         ]
     );
 
@@ -186,7 +163,8 @@ function guard_check_license(
        EXECUTE REQUEST
     ----------------------------------------------------- */
 
-    $response = curl_exec($ch);
+    $response =
+        curl_exec($ch);
 
 
     /* -----------------------------------------------------
@@ -195,7 +173,11 @@ function guard_check_license(
 
     if ($response === false) {
 
-        $error = curl_error($ch);
+        $error =
+            curl_error($ch);
+
+        $errno =
+            curl_errno($ch);
 
         curl_close($ch);
 
@@ -207,14 +189,17 @@ function guard_check_license(
             "status" => "OFF",
 
             "message" =>
-                "License server could not be contacted: "
-                . $error
+                "License server connection failed. " .
+                "cURL error " .
+                $errno .
+                ": " .
+                $error
         ];
     }
 
 
     /* -----------------------------------------------------
-       HTTP STATUS
+       HTTP INFORMATION
     ----------------------------------------------------- */
 
     $http_code =
@@ -224,8 +209,26 @@ function guard_check_license(
         );
 
 
+    $content_type =
+        curl_getinfo(
+            $ch,
+            CURLINFO_CONTENT_TYPE
+        );
+
+
+    $total_time =
+        curl_getinfo(
+            $ch,
+            CURLINFO_TOTAL_TIME
+        );
+
+
     curl_close($ch);
 
+
+    /* -----------------------------------------------------
+       HTTP STATUS CHECK
+    ----------------------------------------------------- */
 
     if (
         $http_code < 200 ||
@@ -239,8 +242,16 @@ function guard_check_license(
             "status" => "OFF",
 
             "message" =>
-                "License checker returned HTTP "
-                . $http_code
+                "License checker returned HTTP " .
+                $http_code .
+                ". Content-Type: " .
+                ($content_type ?? "unknown") .
+                ". Request time: " .
+                round(
+                    (float)$total_time,
+                    3
+                ) .
+                " seconds."
         ];
     }
 
@@ -249,7 +260,8 @@ function guard_check_license(
        CLEAN RESPONSE
     ----------------------------------------------------- */
 
-    $response = trim($response);
+    $response =
+        trim($response);
 
 
     /* Remove UTF-8 BOM */
@@ -280,7 +292,8 @@ function guard_check_license(
         );
 
 
-    $response = trim($response);
+    $response =
+        trim($response);
 
 
     /* -----------------------------------------------------
@@ -303,9 +316,9 @@ function guard_check_license(
             "status" => "OFF",
 
             "message" =>
-                "Invalid response from license server. "
-                . "JSON error: "
-                . json_last_error_msg()
+                "Invalid response from license server. " .
+                "JSON error: " .
+                json_last_error_msg()
         ];
     }
 
@@ -332,7 +345,11 @@ $license =
 
 $authorized =
     isset($license["status"]) &&
-    strtoupper(trim($license["status"])) === "ON";
+    strtoupper(
+        trim(
+            $license["status"]
+        )
+    ) === "ON";
 
 
 /* =========================================================
