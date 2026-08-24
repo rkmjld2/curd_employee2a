@@ -3,27 +3,35 @@
 ============================================================
  CURD-EMPLOYEE2
  USER LOGIN WITH START / STOP TIME CONTROL
+ APPLICATION BASED LOGIN ROUTING
 ============================================================
 
 Database:
     app_users
 
 Columns used:
+    id
     user_id
     user_name
     password_hash
     active
     start_time
     stop_time
+    application
     last_login
+
+Application mapping:
+
+    ravi  -> index.php
+    ravi2 -> payroll.php
+    ravi3 -> controller.php
 
 Timezone:
     Asia/Kolkata
 
 IMPORTANT:
     Time control is checked during login.
-    index.php also checks it again after login.
-
+    Each application should also check the logged-in user.
 ============================================================
 */
 
@@ -35,6 +43,17 @@ require_once __DIR__ . "/db.php";
 
 
 /* =========================================================
+   ALLOWED APPLICATIONS
+========================================================= */
+
+$allowed_applications = [
+    "index.php",
+    "payroll.php",
+    "controller.php"
+];
+
+
+/* =========================================================
    IF ALREADY LOGGED IN
 ========================================================= */
 
@@ -43,7 +62,27 @@ if (
     $_SESSION["app_user_id"] !== ""
 ) {
 
-    header("Location: index.php");
+    $application =
+        $_SESSION["app_application"] ?? "";
+
+    /*
+     * Validate application stored in session.
+     */
+
+    if (
+        !in_array(
+            $application,
+            $allowed_applications,
+            true
+        )
+    ) {
+
+        $application = "index.php";
+    }
+
+    header(
+        "Location: " . $application
+    );
 
     exit;
 }
@@ -72,7 +111,14 @@ if (
         $_POST["password"] ?? "";
 
 
-    if ($user_id === "" || $password === "") {
+    /* =====================================================
+       CHECK EMPTY FIELDS
+    ===================================================== */
+
+    if (
+        $user_id === "" ||
+        $password === ""
+    ) {
 
         $error =
             "Please enter User ID and Password.";
@@ -91,7 +137,8 @@ if (
                 password_hash,
                 active,
                 start_time,
-                stop_time
+                stop_time,
+                application
             FROM app_users
             WHERE user_id = ?
             LIMIT 1
@@ -115,6 +162,10 @@ if (
             $result =
                 $stmt->get_result();
 
+
+            /* =============================================
+               USER NOT FOUND
+            ============================================= */
 
             if (
                 !$result ||
@@ -240,10 +291,45 @@ if (
 
 
                     /* =====================================
+                       CHECK APPLICATION
+                    ===================================== */
+
+                    if (
+                        $error === ""
+                    ) {
+
+                        $application =
+                            trim(
+                                $user["application"] ?? ""
+                            );
+
+
+                        /*
+                         * Application must be one of the
+                         * permitted application files.
+                         */
+
+                        if (
+                            !in_array(
+                                $application,
+                                $allowed_applications,
+                                true
+                            )
+                        ) {
+
+                            $error =
+                                "No valid application is assigned to this user.";
+                        }
+                    }
+
+
+                    /* =====================================
                        LOGIN SUCCESS
                     ===================================== */
 
-                    if ($error === "") {
+                    if (
+                        $error === ""
+                    ) {
 
                         /*
                          * Regenerate session ID after
@@ -254,6 +340,10 @@ if (
                             true
                         );
 
+
+                        /* =================================
+                           STORE LOGIN SESSION
+                        ================================= */
 
                         $_SESSION[
                             "app_user_id"
@@ -266,11 +356,6 @@ if (
                         ] =
                             $user["user_name"];
 
-
-                        /*
-                         * Store the permitted stop time
-                         * in the session for display/use.
-                         */
 
                         $_SESSION[
                             "app_start_time"
@@ -285,8 +370,19 @@ if (
 
 
                         /*
-                         * Update last_login.
+                         * Store application assigned
+                         * to this user.
                          */
+
+                        $_SESSION[
+                            "app_application"
+                        ] =
+                            $application;
+
+
+                        /* =================================
+                           UPDATE LAST LOGIN
+                        ================================= */
 
                         $update =
                             $conn->prepare("
@@ -303,11 +399,13 @@ if (
                                     "Y-m-d H:i:s"
                                 );
 
+
                             $update->bind_param(
                                 "ss",
                                 $login_time,
                                 $user["user_id"]
                             );
+
 
                             $update->execute();
 
@@ -315,8 +413,12 @@ if (
                         }
 
 
+                        /* =================================
+                           REDIRECT TO USER APPLICATION
+                        ================================= */
+
                         header(
-                            "Location: index.php"
+                            "Location: " . $application
                         );
 
                         exit;
