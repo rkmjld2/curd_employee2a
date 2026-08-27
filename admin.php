@@ -5,31 +5,31 @@
  ADMIN USER MANAGEMENT
 ============================================================
 
-Purpose:
-    Administrator dashboard for managing app_users.
-
-Authentication:
-    admin_login.php
-    ADMIN_PASSWORD environment variable
-
 Database:
+    employee
+
+User table:
     app_users
 
-Fields:
-    id
-    user_id
-    user_name
-    password_hash
-    active
-    start_time
-    stop_time
-    last_login
-    created_at
-    updated_at
+Purpose:
+    Administrator can:
+
+        1. View users
+        2. Activate users
+        3. Deactivate users
+        4. Set Start Time
+        5. Set Stop Time
+        6. Clear Start Time
+        7. Clear Stop Time
+
+IMPORTANT:
+    This file ONLY modifies app_users.
+
+    It DOES NOT modify:
+        employee
 
 Timezone:
     Asia/Kolkata
-
 ============================================================
 */
 
@@ -56,24 +56,19 @@ if (
 
 
 /* =========================================================
+   MESSAGE
+========================================================= */
+
+$message = "";
+
+$message_type = "";
+
+
+/* =========================================================
    ADMIN LOGOUT
 ========================================================= */
 
-if (
-    isset($_GET["logout"]) &&
-    $_GET["logout"] === "1"
-) {
-
-    /*
-     * Remove administrator session.
-     */
-
-    unset($_SESSION["admin_logged_in"]);
-    unset($_SESSION["admin_name"]);
-
-    /*
-     * Destroy complete session.
-     */
+if (isset($_GET["logout"])) {
 
     $_SESSION = [];
 
@@ -86,15 +81,6 @@ if (
 
 
 /* =========================================================
-   MESSAGE
-========================================================= */
-
-$message = "";
-
-$message_type = "";
-
-
-/* =========================================================
    ACTIVATE USER
 ========================================================= */
 
@@ -103,32 +89,38 @@ if (
     isset($_POST["activate_user"])
 ) {
 
-    $user_id =
-        trim($_POST["user_id"] ?? "");
+    $id =
+        intval($_POST["id"] ?? 0);
 
 
-    if ($user_id === "") {
+    if ($id <= 0) {
 
         $message =
-            "User ID is missing.";
+            "Invalid user ID.";
 
         $message_type =
             "error";
 
     } else {
 
+        /*
+         * IMPORTANT:
+         *
+         * Only app_users is changed.
+         */
+
         $stmt = $conn->prepare("
             UPDATE app_users
             SET active = 1
-            WHERE user_id = ?
+            WHERE id = ?
         ");
 
 
         if ($stmt) {
 
             $stmt->bind_param(
-                "s",
-                $user_id
+                "i",
+                $id
             );
 
 
@@ -173,32 +165,40 @@ if (
     isset($_POST["deactivate_user"])
 ) {
 
-    $user_id =
-        trim($_POST["user_id"] ?? "");
+    $id =
+        intval($_POST["id"] ?? 0);
 
 
-    if ($user_id === "") {
+    if ($id <= 0) {
 
         $message =
-            "User ID is missing.";
+            "Invalid user ID.";
 
         $message_type =
             "error";
 
     } else {
 
+        /*
+         * IMPORTANT:
+         *
+         * Only app_users is changed.
+         *
+         * Employee records remain untouched.
+         */
+
         $stmt = $conn->prepare("
             UPDATE app_users
             SET active = 0
-            WHERE user_id = ?
+            WHERE id = ?
         ");
 
 
         if ($stmt) {
 
             $stmt->bind_param(
-                "s",
-                $user_id
+                "i",
+                $id
             );
 
 
@@ -235,22 +235,33 @@ if (
 
 
 /* =========================================================
-   DELETE USER
+   SAVE START TIME
 ========================================================= */
 
 if (
     $_SERVER["REQUEST_METHOD"] === "POST" &&
-    isset($_POST["delete_user"])
+    isset($_POST["save_start"])
 ) {
 
-    $user_id =
-        trim($_POST["user_id"] ?? "");
+    $id =
+        intval($_POST["id"] ?? 0);
+
+    $start_time =
+        trim($_POST["start_time"] ?? "");
 
 
-    if ($user_id === "") {
+    if ($id <= 0) {
 
         $message =
-            "User ID is missing.";
+            "Invalid user ID.";
+
+        $message_type =
+            "error";
+
+    } elseif ($start_time === "") {
+
+        $message =
+            "Start time is required.";
 
         $message_type =
             "error";
@@ -258,76 +269,59 @@ if (
     } else {
 
         /*
-         * Delete employee records belonging
-         * to this user first.
+         * Convert HTML datetime-local:
          *
-         * This prevents orphan records when
-         * employee.user_id does not have
-         * a cascading foreign key.
+         * 2026-08-21T18:30
+         *
+         * to:
+         *
+         * 2026-08-21 18:30:00
          */
 
-        $stmt_employee = $conn->prepare("
-            DELETE FROM employee
-            WHERE user_id = ?
-        ");
-
-
-        if ($stmt_employee) {
-
-            $stmt_employee->bind_param(
-                "s",
-                $user_id
+        $start_datetime =
+            str_replace(
+                "T",
+                " ",
+                $start_time
             );
 
-            $stmt_employee->execute();
 
-            $stmt_employee->close();
+        if (
+            strlen($start_datetime) === 16
+        ) {
+
+            $start_datetime .= ":00";
         }
 
 
-        /*
-         * Now delete the user.
-         */
-
         $stmt = $conn->prepare("
-            DELETE FROM app_users
-            WHERE user_id = ?
+            UPDATE app_users
+            SET start_time = ?
+            WHERE id = ?
         ");
 
 
         if ($stmt) {
 
             $stmt->bind_param(
-                "s",
-                $user_id
+                "si",
+                $start_datetime,
+                $id
             );
 
 
             if ($stmt->execute()) {
 
-                if (
-                    $stmt->affected_rows > 0
-                ) {
+                $message =
+                    "Start time saved successfully.";
 
-                    $message =
-                        "User and associated employee records deleted successfully.";
-
-                    $message_type =
-                        "success";
-
-                } else {
-
-                    $message =
-                        "User not found.";
-
-                    $message_type =
-                        "error";
-                }
+                $message_type =
+                    "success";
 
             } else {
 
                 $message =
-                    "Delete failed.";
+                    "Could not save start time.";
 
                 $message_type =
                     "error";
@@ -339,7 +333,233 @@ if (
         } else {
 
             $message =
-                "Delete preparation failed.";
+                "Start time preparation failed.";
+
+            $message_type =
+                "error";
+        }
+    }
+}
+
+
+/* =========================================================
+   CLEAR START TIME
+========================================================= */
+
+if (
+    $_SERVER["REQUEST_METHOD"] === "POST" &&
+    isset($_POST["clear_start"])
+) {
+
+    $id =
+        intval($_POST["id"] ?? 0);
+
+
+    if ($id > 0) {
+
+        $stmt = $conn->prepare("
+            UPDATE app_users
+            SET start_time = NULL
+            WHERE id = ?
+        ");
+
+
+        if ($stmt) {
+
+            $stmt->bind_param(
+                "i",
+                $id
+            );
+
+
+            if ($stmt->execute()) {
+
+                $message =
+                    "Start time cleared.";
+
+                $message_type =
+                    "success";
+
+            } else {
+
+                $message =
+                    "Could not clear start time.";
+
+                $message_type =
+                    "error";
+            }
+
+
+            $stmt->close();
+
+        } else {
+
+            $message =
+                "Clear start preparation failed.";
+
+            $message_type =
+                "error";
+        }
+    }
+}
+
+
+/* =========================================================
+   SAVE STOP TIME
+========================================================= */
+
+if (
+    $_SERVER["REQUEST_METHOD"] === "POST" &&
+    isset($_POST["save_stop"])
+) {
+
+    $id =
+        intval($_POST["id"] ?? 0);
+
+    $stop_time =
+        trim($_POST["stop_time"] ?? "");
+
+
+    if ($id <= 0) {
+
+        $message =
+            "Invalid user ID.";
+
+        $message_type =
+            "error";
+
+    } elseif ($stop_time === "") {
+
+        $message =
+            "Stop time is required.";
+
+        $message_type =
+            "error";
+
+    } else {
+
+        /*
+         * Convert HTML datetime-local
+         */
+
+        $stop_datetime =
+            str_replace(
+                "T",
+                " ",
+                $stop_time
+            );
+
+
+        if (
+            strlen($stop_datetime) === 16
+        ) {
+
+            $stop_datetime .= ":00";
+        }
+
+
+        $stmt = $conn->prepare("
+            UPDATE app_users
+            SET stop_time = ?
+            WHERE id = ?
+        ");
+
+
+        if ($stmt) {
+
+            $stmt->bind_param(
+                "si",
+                $stop_datetime,
+                $id
+            );
+
+
+            if ($stmt->execute()) {
+
+                $message =
+                    "Stop time saved successfully.";
+
+                $message_type =
+                    "success";
+
+            } else {
+
+                $message =
+                    "Could not save stop time.";
+
+                $message_type =
+                    "error";
+            }
+
+
+            $stmt->close();
+
+        } else {
+
+            $message =
+                "Stop time preparation failed.";
+
+            $message_type =
+                "error";
+        }
+    }
+}
+
+
+/* =========================================================
+   CLEAR STOP TIME
+========================================================= */
+
+if (
+    $_SERVER["REQUEST_METHOD"] === "POST" &&
+    isset($_POST["clear_stop"])
+) {
+
+    $id =
+        intval($_POST["id"] ?? 0);
+
+
+    if ($id > 0) {
+
+        $stmt = $conn->prepare("
+            UPDATE app_users
+            SET stop_time = NULL
+            WHERE id = ?
+        ");
+
+
+        if ($stmt) {
+
+            $stmt->bind_param(
+                "i",
+                $id
+            );
+
+
+            if ($stmt->execute()) {
+
+                $message =
+                    "Stop time cleared.";
+
+                $message_type =
+                    "success";
+
+            } else {
+
+                $message =
+                    "Could not clear stop time.";
+
+                $message_type =
+                    "error";
+            }
+
+
+            $stmt->close();
+
+        } else {
+
+            $message =
+                "Clear stop preparation failed.";
 
             $message_type =
                 "error";
@@ -351,6 +571,9 @@ if (
 /* =========================================================
    READ ALL USERS
 ========================================================= */
+
+$users = [];
+
 
 $result = $conn->query("
     SELECT
@@ -368,12 +591,16 @@ $result = $conn->query("
 ");
 
 
-/* =========================================================
-   ADMIN NAME
-========================================================= */
+if ($result) {
 
-$admin_name =
-    $_SESSION["admin_name"] ?? "Administrator";
+    while (
+        $row =
+        $result->fetch_assoc()
+    ) {
+
+        $users[] = $row;
+    }
+}
 
 ?>
 <!DOCTYPE html>
@@ -384,10 +611,14 @@ $admin_name =
 
 <meta charset="UTF-8">
 
-<meta name="viewport"
-      content="width=device-width, initial-scale=1.0">
+<meta
+    name="viewport"
+    content="width=device-width, initial-scale=1.0"
+>
 
-<title>CURD-EMPLOYEE2 - User Management</title>
+<title>
+CURD-EMPLOYEE2 - Admin
+</title>
 
 
 <style>
@@ -395,7 +626,6 @@ $admin_name =
 * {
     box-sizing: border-box;
 }
-
 
 body {
 
@@ -416,11 +646,21 @@ body {
 
 .container {
 
-    width: 95%;
+    width: 98%;
 
-    max-width: 1400px;
+    max-width: 1500px;
 
-    margin: 30px auto;
+    margin: auto;
+
+    background: white;
+
+    padding: 25px;
+
+    border-radius: 12px;
+
+    box-shadow:
+        0 3px 15px
+        rgba(0,0,0,0.12);
 }
 
 
@@ -430,79 +670,50 @@ body {
 
 .header {
 
-    background: white;
+    position: relative;
 
-    padding: 20px;
+    text-align: center;
 
-    border-radius: 10px;
-
-    box-shadow:
-        0 3px 10px
-        rgba(0,0,0,0.12);
-
-    margin-bottom: 20px;
-
-    display: flex;
-
-    justify-content: space-between;
-
-    align-items: center;
-
-    flex-wrap: wrap;
-
-    gap: 15px;
+    margin-bottom: 25px;
 }
-
 
 .header h1 {
 
-    margin: 0;
+    margin: 0 0 5px 0;
 
     color: #1d3557;
 }
 
-
-.header-subtitle {
+.subtitle {
 
     color: #666;
 
-    margin-top: 5px;
+    font-size: 15px;
 }
 
 
-.admin-info {
+.logout {
 
-    text-align: right;
-}
+    position: absolute;
 
+    right: 0;
 
-.admin-name {
+    top: 0;
 
-    font-weight: bold;
-
-    color: #6f42c1;
-
-    margin-bottom: 8px;
-}
-
-
-.logout-button {
+    text-decoration: none;
 
     background: #6c757d;
 
     color: white;
 
-    padding: 8px 14px;
+    padding: 9px 15px;
 
     border-radius: 5px;
-
-    text-decoration: none;
 
     font-size: 14px;
 }
 
-
-.logout-button:hover {
+.logout:hover {
 
     opacity: 0.85;
 }
@@ -525,14 +736,12 @@ body {
     text-align: center;
 }
 
-
 .success {
 
     background: #d1e7dd;
 
     color: #0f5132;
 }
-
 
 .error {
 
@@ -543,102 +752,35 @@ body {
 
 
 /* =========================================================
-   ACTION BAR
+   INFORMATION
 ========================================================= */
 
-.action-bar {
+.info-box {
 
-    background: white;
+    background: #e7f1ff;
+
+    border: 1px solid #b8d8f5;
 
     padding: 15px;
 
-    border-radius: 10px;
-
-    box-shadow:
-        0 3px 10px
-        rgba(0,0,0,0.12);
+    border-radius: 8px;
 
     margin-bottom: 20px;
 
-    display: flex;
+    color: #084298;
 
-    gap: 10px;
-
-    flex-wrap: wrap;
-}
-
-
-.button {
-
-    display: inline-block;
-
-    padding: 9px 15px;
-
-    border: none;
-
-    border-radius: 5px;
-
-    text-decoration: none;
-
-    cursor: pointer;
-
-    font-size: 14px;
-}
-
-
-.create-button {
-
-    background: #198754;
-
-    color: white;
-}
-
-
-.refresh-button {
-
-    background: #0d6efd;
-
-    color: white;
-}
-
-
-.button:hover {
-
-    opacity: 0.85;
+    line-height: 1.7;
 }
 
 
 /* =========================================================
-   TABLE CARD
+   TABLE
 ========================================================= */
-
-.card {
-
-    background: white;
-
-    padding: 20px;
-
-    border-radius: 10px;
-
-    box-shadow:
-        0 3px 10px
-        rgba(0,0,0,0.12);
-}
-
-
-.card h2 {
-
-    margin-top: 0;
-
-    color: #1d3557;
-}
-
 
 .table-container {
 
     overflow-x: auto;
 }
-
 
 table {
 
@@ -646,9 +788,8 @@ table {
 
     border-collapse: collapse;
 
-    min-width: 1100px;
+    min-width: 1200px;
 }
-
 
 th,
 td {
@@ -662,14 +803,14 @@ td {
     vertical-align: middle;
 }
 
-
 th {
 
     background: #1d3557;
 
     color: white;
-}
 
+    white-space: nowrap;
+}
 
 tr:nth-child(even) {
 
@@ -678,86 +819,127 @@ tr:nth-child(even) {
 
 
 /* =========================================================
-   STATUS
+   USER STATUS
 ========================================================= */
 
-.status-active {
+.active {
 
-    display: inline-block;
-
-    background: #d1e7dd;
-
-    color: #0f5132;
-
-    padding: 5px 10px;
-
-    border-radius: 15px;
+    color: #198754;
 
     font-weight: bold;
 }
 
+.inactive {
 
-.status-inactive {
-
-    display: inline-block;
-
-    background: #f8d7da;
-
-    color: #842029;
-
-    padding: 5px 10px;
-
-    border-radius: 15px;
+    color: #dc3545;
 
     font-weight: bold;
 }
 
 
 /* =========================================================
-   ACTION BUTTONS
+   BUTTONS
 ========================================================= */
 
-.edit-button {
+button {
 
-    background: #0d6efd;
+    border: none;
+
+    border-radius: 5px;
+
+    padding: 8px 12px;
+
+    cursor: pointer;
+
+    font-size: 13px;
 
     color: white;
 }
 
+button:hover {
 
-.activate-button {
+    opacity: 0.85;
+}
+
+.activate {
 
     background: #198754;
-
-    color: white;
 }
 
-
-.deactivate-button {
-
-    background: #fd7e14;
-
-    color: white;
-}
-
-
-.delete-button {
+.deactivate {
 
     background: #dc3545;
-
-    color: white;
 }
 
+.save {
+
+    background: #0d6efd;
+}
+
+.clear {
+
+    background: #6c757d;
+}
+
+
+/* =========================================================
+   FORMS
+========================================================= */
 
 .action-form {
 
-    display: inline;
+    margin: 3px 0;
+}
+
+.datetime-form {
+
+    display: flex;
+
+    flex-direction: column;
+
+    gap: 5px;
+
+    align-items: center;
+}
+
+.datetime-form input {
+
+    padding: 7px;
+
+    border: 1px solid #aaa;
+
+    border-radius: 5px;
+
+    font-size: 13px;
+
+    width: 210px;
+}
+
+.button-row {
+
+    display: flex;
+
+    gap: 5px;
+
+    justify-content: center;
+
+    flex-wrap: wrap;
 }
 
 
-.action-cell {
+/* =========================================================
+   NO USERS
+========================================================= */
 
-    white-space: nowrap;
+.no-users {
+
+    padding: 30px;
+
+    text-align: center;
+
+    color: #666;
+
+    font-size: 16px;
 }
 
 
@@ -772,28 +954,24 @@ tr:nth-child(even) {
         padding: 10px;
     }
 
-
     .container {
 
-        width: 100%;
-
-        margin: 10px auto;
+        padding: 15px;
     }
 
+    .logout {
+
+        position: static;
+
+        display: inline-block;
+
+        margin-top: 10px;
+    }
 
     .header {
 
         text-align: center;
-
-        justify-content: center;
     }
-
-
-    .admin-info {
-
-        text-align: center;
-    }
-
 }
 
 </style>
@@ -813,47 +991,49 @@ tr:nth-child(even) {
 
 <div class="header">
 
-
-<div>
-
 <h1>
-User Management
+CURD-EMPLOYEE2
 </h1>
 
-<div class="header-subtitle">
-CURD-EMPLOYEE2 Administrator Panel
-</div>
-
-</div>
-
-
-<div class="admin-info">
-
-<div class="admin-name">
-
-Logged in as:
-<?php
-
-echo htmlspecialchars(
-    $admin_name,
-    ENT_QUOTES,
-    "UTF-8"
-);
-
-?>
-
+<div class="subtitle">
+Administrator - User Management
 </div>
 
 
 <a
     href="admin.php?logout=1"
-    class="logout-button"
+    class="logout"
 >
-Admin Logout
+Logout
 </a>
 
 </div>
 
+
+<!-- ======================================================
+     INFORMATION
+====================================================== -->
+
+<div class="info-box">
+
+<strong>
+Administrator User Management
+</strong>
+
+<br>
+
+From this page you can activate or deactivate users
+and control their Start Time and Stop Time.
+
+<br><br>
+
+<strong>
+Important:
+</strong>
+
+Changing a user's status or time settings here
+does <strong>not</strong> change or delete any
+employee records.
 
 </div>
 
@@ -868,7 +1048,8 @@ if ($message !== "") {
     class="message
     <?php
 
-    echo $message_type === "success"
+    echo
+        $message_type === "success"
         ? "success"
         : "error";
 
@@ -895,48 +1076,12 @@ echo htmlspecialchars(
 
 
 <!-- ======================================================
-     ACTION BAR
-====================================================== -->
-
-<div class="action-bar">
-
-
-<a
-    href="create_user.php"
-    class="button create-button"
->
-+ Create New User
-</a>
-
-
-<a
-    href="admin.php"
-    class="button refresh-button"
->
-Refresh
-</a>
-
-
-</div>
-
-
-<!-- ======================================================
      USER TABLE
 ====================================================== -->
 
-<div class="card">
-
-
-<h2>
-Registered Users
-</h2>
-
-
 <div class="table-container">
 
-
 <table>
-
 
 <thead>
 
@@ -960,7 +1105,11 @@ Registered Users
 
 <th>Updated At</th>
 
-<th>Action</th>
+<th>Activate / Deactivate</th>
+
+<th>Start Time Control</th>
+
+<th>Stop Time Control</th>
 
 </tr>
 
@@ -969,31 +1118,25 @@ Registered Users
 
 <tbody>
 
-
 <?php
 
-if (
-    $result &&
-    $result->num_rows > 0
-) {
+if (count($users) > 0) {
 
-    while (
-        $row =
-        $result->fetch_assoc()
-    ) {
+    foreach ($users as $user) {
 
 ?>
 
-
 <tr>
 
+
+<!-- ID -->
 
 <td>
 
 <?php
 
 echo intval(
-    $row["id"]
+    $user["id"]
 );
 
 ?>
@@ -1001,12 +1144,35 @@ echo intval(
 </td>
 
 
+<!-- USER ID -->
+
+<td>
+
+<strong>
+
+<?php
+
+echo htmlspecialchars(
+    $user["user_id"],
+    ENT_QUOTES,
+    "UTF-8"
+);
+
+?>
+
+</strong>
+
+</td>
+
+
+<!-- USER NAME -->
+
 <td>
 
 <?php
 
 echo htmlspecialchars(
-    $row["user_id"],
+    $user["user_name"],
     ENT_QUOTES,
     "UTF-8"
 );
@@ -1016,32 +1182,19 @@ echo htmlspecialchars(
 </td>
 
 
-<td>
-
-<?php
-
-echo htmlspecialchars(
-    $row["user_name"],
-    ENT_QUOTES,
-    "UTF-8"
-);
-
-?>
-
-</td>
-
+<!-- STATUS -->
 
 <td>
 
 <?php
 
 if (
-    (int)$row["active"] === 1
+    (int)$user["active"] === 1
 ) {
 
 ?>
 
-<span class="status-active">
+<span class="active">
 ACTIVE
 </span>
 
@@ -1051,7 +1204,7 @@ ACTIVE
 
 ?>
 
-<span class="status-inactive">
+<span class="inactive">
 INACTIVE
 </span>
 
@@ -1064,110 +1217,129 @@ INACTIVE
 </td>
 
 
-<td>
-
-<?php
-
-echo !empty($row["start_time"])
-    ? htmlspecialchars(
-        $row["start_time"],
-        ENT_QUOTES,
-        "UTF-8"
-    )
-    : "-";
-
-?>
-
-</td>
-
+<!-- START TIME -->
 
 <td>
-
-<?php
-
-echo !empty($row["stop_time"])
-    ? htmlspecialchars(
-        $row["stop_time"],
-        ENT_QUOTES,
-        "UTF-8"
-    )
-    : "-";
-
-?>
-
-</td>
-
-
-<td>
-
-<?php
-
-echo !empty($row["last_login"])
-    ? htmlspecialchars(
-        $row["last_login"],
-        ENT_QUOTES,
-        "UTF-8"
-    )
-    : "Never";
-
-?>
-
-</td>
-
-
-<td>
-
-<?php
-
-echo htmlspecialchars(
-    $row["created_at"],
-    ENT_QUOTES,
-    "UTF-8"
-);
-
-?>
-
-</td>
-
-
-<td>
-
-<?php
-
-echo htmlspecialchars(
-    $row["updated_at"],
-    ENT_QUOTES,
-    "UTF-8"
-);
-
-?>
-
-</td>
-
-
-<td class="action-cell">
-
-
-<!-- EDIT -->
-
-<a
-    href="edit_user.php?user_id=<?php
-        echo urlencode(
-            $row["user_id"]
-        );
-    ?>"
-    class="button edit-button"
->
-Edit
-</a>
-
-
-<!-- ACTIVATE / DEACTIVATE -->
 
 <?php
 
 if (
-    (int)$row["active"] === 1
+    !empty($user["start_time"])
+) {
+
+    echo htmlspecialchars(
+        $user["start_time"],
+        ENT_QUOTES,
+        "UTF-8"
+    );
+
+} else {
+
+    echo "Not set";
+}
+
+?>
+
+</td>
+
+
+<!-- STOP TIME -->
+
+<td>
+
+<?php
+
+if (
+    !empty($user["stop_time"])
+) {
+
+    echo htmlspecialchars(
+        $user["stop_time"],
+        ENT_QUOTES,
+        "UTF-8"
+    );
+
+} else {
+
+    echo "Not set";
+}
+
+?>
+
+</td>
+
+
+<!-- LAST LOGIN -->
+
+<td>
+
+<?php
+
+if (
+    !empty($user["last_login"])
+) {
+
+    echo htmlspecialchars(
+        $user["last_login"],
+        ENT_QUOTES,
+        "UTF-8"
+    );
+
+} else {
+
+    echo "Never";
+}
+
+?>
+
+</td>
+
+
+<!-- CREATED -->
+
+<td>
+
+<?php
+
+echo htmlspecialchars(
+    $user["created_at"],
+    ENT_QUOTES,
+    "UTF-8"
+);
+
+?>
+
+</td>
+
+
+<!-- UPDATED -->
+
+<td>
+
+<?php
+
+echo htmlspecialchars(
+    $user["updated_at"],
+    ENT_QUOTES,
+    "UTF-8"
+);
+
+?>
+
+</td>
+
+
+<!-- ==================================================
+     ACTIVATE / DEACTIVATE
+================================================== -->
+
+<td>
+
+
+<?php
+
+if (
+    (int)$user["active"] === 1
 ) {
 
 ?>
@@ -1180,22 +1352,18 @@ if (
 
 <input
     type="hidden"
-    name="user_id"
+    name="id"
     value="<?php
-
-        echo htmlspecialchars(
-            $row["user_id"],
-            ENT_QUOTES,
-            "UTF-8"
+        echo intval(
+            $user["id"]
         );
-
     ?>"
 >
 
 <button
     type="submit"
     name="deactivate_user"
-    class="button deactivate-button"
+    class="deactivate"
     onclick="
         return confirm(
             'Deactivate this user?'
@@ -1221,22 +1389,18 @@ Deactivate
 
 <input
     type="hidden"
-    name="user_id"
+    name="id"
     value="<?php
-
-        echo htmlspecialchars(
-            $row["user_id"],
-            ENT_QUOTES,
-            "UTF-8"
+        echo intval(
+            $user["id"]
         );
-
     ?>"
 >
 
 <button
     type="submit"
     name="activate_user"
-    class="button activate-button"
+    class="activate"
 >
 Activate
 </button>
@@ -1249,50 +1413,172 @@ Activate
 
 ?>
 
+</td>
 
-<!-- DELETE -->
+
+<!-- ==================================================
+     START TIME CONTROL
+================================================== -->
+
+<td>
 
 <form
     method="POST"
     action="admin.php"
-    class="action-form"
+    class="datetime-form"
 >
 
 <input
     type="hidden"
-    name="user_id"
+    name="id"
+    value="<?php
+        echo intval(
+            $user["id"]
+        );
+    ?>"
+>
+
+
+<input
+    type="datetime-local"
+    name="start_time"
     value="<?php
 
-        echo htmlspecialchars(
-            $row["user_id"],
-            ENT_QUOTES,
-            "UTF-8"
-        );
+        if (
+            !empty(
+                $user["start_time"]
+            )
+        ) {
+
+            echo htmlspecialchars(
+                date(
+                    "Y-m-d\TH:i",
+                    strtotime(
+                        $user["start_time"]
+                    )
+                ),
+                ENT_QUOTES,
+                "UTF-8"
+            );
+        }
 
     ?>"
 >
 
+
+<div class="button-row">
+
 <button
     type="submit"
-    name="delete_user"
-    class="button delete-button"
+    name="save_start"
+    class="save"
+>
+Save
+</button>
+
+
+<button
+    type="submit"
+    name="clear_start"
+    class="clear"
     onclick="
         return confirm(
-            'WARNING! This will delete the user and all employee records belonging to this user. Continue?'
+            'Clear the Start Time?'
         );
     "
 >
-Delete
+Clear
 </button>
+
+</div>
 
 </form>
 
+</td>
+
+
+<!-- ==================================================
+     STOP TIME CONTROL
+================================================== -->
+
+<td>
+
+<form
+    method="POST"
+    action="admin.php"
+    class="datetime-form"
+>
+
+<input
+    type="hidden"
+    name="id"
+    value="<?php
+        echo intval(
+            $user["id"]
+        );
+    ?>"
+>
+
+
+<input
+    type="datetime-local"
+    name="stop_time"
+    value="<?php
+
+        if (
+            !empty(
+                $user["stop_time"]
+            )
+        ) {
+
+            echo htmlspecialchars(
+                date(
+                    "Y-m-d\TH:i",
+                    strtotime(
+                        $user["stop_time"]
+                    )
+                ),
+                ENT_QUOTES,
+                "UTF-8"
+            );
+        }
+
+    ?>"
+>
+
+
+<div class="button-row">
+
+<button
+    type="submit"
+    name="save_stop"
+    class="save"
+>
+Save
+</button>
+
+
+<button
+    type="submit"
+    name="clear_stop"
+    class="clear"
+    onclick="
+        return confirm(
+            'Clear the Stop Time?'
+        );
+    "
+>
+Clear
+</button>
+
+</div>
+
+</form>
 
 </td>
 
 
 </tr>
-
 
 <?php
 
@@ -1302,17 +1588,16 @@ Delete
 
 ?>
 
-
 <tr>
 
 <td
-    colspan="10"
+    colspan="12"
+    class="no-users"
 >
-No users found.
+No users found in app_users.
 </td>
 
 </tr>
-
 
 <?php
 
@@ -1320,14 +1605,9 @@ No users found.
 
 ?>
 
-
 </tbody>
 
 </table>
-
-
-</div>
-
 
 </div>
 
