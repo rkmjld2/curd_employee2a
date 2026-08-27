@@ -19,6 +19,7 @@ Columns:
     user_id
     user_name
     password_hash
+    application
     active
     start_time
     stop_time
@@ -220,6 +221,11 @@ if ($is_admin) {
                     $_POST["user_name"] ?? ""
                 );
 
+            $application =
+                trim(
+                    $_POST["application"] ?? ""
+                );
+
             $password =
                 $_POST["password"] ?? "";
 
@@ -266,6 +272,13 @@ if ($is_admin) {
 
                 $error =
                     "User Name cannot exceed 100 characters.";
+
+            } elseif (
+                strlen($application) > 255
+            ) {
+
+                $error =
+                    "Application cannot exceed 255 characters.";
 
             } elseif (
                 $id === 0 &&
@@ -401,6 +414,7 @@ if ($is_admin) {
                                     user_id = ?,
                                     user_name = ?,
                                     password_hash = ?,
+                                    application = ?,
                                     active = ?,
                                     start_time = ?,
                                     stop_time = ?
@@ -415,10 +429,11 @@ if ($is_admin) {
                         } else {
 
                             $stmt->bind_param(
-                                "sssissi",
+                                "ssssissi",
                                 $user_id,
                                 $user_name,
                                 $password_hash,
+                                $application,
                                 $active,
                                 $start_db,
                                 $stop_db,
@@ -439,6 +454,7 @@ if ($is_admin) {
                                 SET
                                     user_id = ?,
                                     user_name = ?,
+                                    application = ?,
                                     active = ?,
                                     start_time = ?,
                                     stop_time = ?
@@ -453,9 +469,10 @@ if ($is_admin) {
                         } else {
 
                             $stmt->bind_param(
-                                "ssissi",
+                                "sssissi",
                                 $user_id,
                                 $user_name,
+                                $application,
                                 $active,
                                 $start_db,
                                 $stop_db,
@@ -521,12 +538,14 @@ if ($is_admin) {
                                 user_id,
                                 user_name,
                                 password_hash,
+                                application,
                                 active,
                                 start_time,
                                 stop_time
                             )
                             VALUES
                             (
+                                ?,
                                 ?,
                                 ?,
                                 ?,
@@ -544,10 +563,11 @@ if ($is_admin) {
                     } else {
 
                         $stmt->bind_param(
-                            "sssiss",
+                            "ssssiss",
                             $user_id,
                             $user_name,
                             $password_hash,
+                            $application,
                             $active,
                             $start_db,
                             $stop_db
@@ -683,6 +703,7 @@ if (
                     id,
                     user_id,
                     user_name,
+                    application,
                     active,
                     start_time,
                     stop_time,
@@ -735,6 +756,7 @@ if ($is_admin) {
                 id,
                 user_id,
                 user_name,
+                application,
                 active,
                 start_time,
                 stop_time,
@@ -1192,7 +1214,7 @@ Administrator - User Control
 
 <div class="note">
 
-You can create and manage users, passwords,
+You can create and manage users, passwords, application,
 active status, start time and stop time.
 
 </div>
@@ -1306,6 +1328,34 @@ User Name
         );
     ?>"
 >
+
+</div>
+
+
+<div class="form-group">
+
+<label>
+Application
+</label>
+
+<input
+    type="text"
+    name="application"
+    maxlength="255"
+    placeholder="/curd_employee2/index.php"
+    value="<?php
+        echo htmlspecialchars(
+            $edit_user["application"] ?? "",
+            ENT_QUOTES,
+            "UTF-8"
+        );
+    ?>"
+>
+
+<div class="small">
+Enter the application path or URL to open after login.
+Example: /curd_employee2/index.php
+</div>
 
 </div>
 
@@ -1491,6 +1541,8 @@ All Application Users
 
 <th>User Name</th>
 
+<th>Application</th>
+
 <th>Status</th>
 
 <th>Start Time</th>
@@ -1555,6 +1607,19 @@ echo htmlspecialchars(
 <?php
 echo htmlspecialchars(
     $row["user_name"],
+    ENT_QUOTES,
+    "UTF-8"
+);
+?>
+
+</td>
+
+
+<td>
+
+<?php
+echo htmlspecialchars(
+    $row["application"] ?? "",
     ENT_QUOTES,
     "UTF-8"
 );
@@ -1748,7 +1813,7 @@ Delete
 
 <tr>
 
-<td colspan="10">
+<td colspan="11">
 No users found.
 </td>
 
