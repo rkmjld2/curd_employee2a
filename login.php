@@ -49,7 +49,8 @@ require_once __DIR__ . "/db.php";
 $allowed_applications = [
     "index.php",
     "payroll.php",
-    "controller.php"
+    "controller.php",
+  "https://esp-switch5e-remote.onrender.com"
 ];
 
 
