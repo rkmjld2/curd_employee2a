@@ -1,4 +1,3 @@
-
 <?php
 /*
 ============================================================
@@ -140,7 +139,7 @@ You have been successfully logged out.
 </p>
 
 <a
-    href="/login.php"
+    href="login.php"
     class="login-button"
 >
 Login Again
@@ -151,4 +150,3 @@ Login Again
 </body>
 
 </html>
-
