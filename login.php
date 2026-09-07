@@ -50,7 +50,7 @@ $allowed_applications = [
     "index.php",
     "payroll.php",
     "controller.php",
-   "crud3/index.php",
+   "/crud3/index.php",
   "https://esp-switch5e-remote.onrender.com"
 ];
 
